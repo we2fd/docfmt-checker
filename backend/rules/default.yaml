@@ -1,0 +1,568 @@
+# 格致 · 内置规则集
+#
+# 本文件是一份「本科毕业论文格式规范」的可执行描述。规则是数据不是代码：
+# 增删规则、调整阈值、给不同学校定制模板，都只需要改这个文件。
+#
+# 可用 checker 与参数见 docs/规则设计.md（也可访问 /api/v1/config 查询）。
+# severity: error 必须改 | warning 建议改 | info 可选优化
+# enabled:  false 可临时停用某条规则（界面上的开关会写回这里）
+
+meta:
+  id: default
+  name: 本科毕业论文格式规范（通用版）
+  version: "1.0"
+  description: 覆盖排版规范、结构完整性、全文一致性、内容规范四个维度，共 56 条规则。阈值按「上下 2.5cm、左 3.0cm、右 2.5cm，正文宋体小四、1.5 倍行距」这一常见要求设定，学校模板不同时可在界面上直接调整。
+
+rules:
+
+  # ============================================================ 一、排版规范
+  - id: layout.page.width
+    name: 纸张宽度（A4）
+    category: layout
+    severity: error
+    checker: prop_equals
+    params: {target: section, prop: page_width_cm, expected: 21.0, tol: 0.2}
+    suggestion: 布局 → 页面设置 → 纸张大小选 A4（21 × 29.7 厘米）
+    reference: 《本科毕业论文撰写规范》纸张要求
+
+  - id: layout.page.height
+    name: 纸张高度（A4）
+    category: layout
+    severity: error
+    checker: prop_equals
+    params: {target: section, prop: page_height_cm, expected: 29.7, tol: 0.2}
+    suggestion: 布局 → 页面设置 → 纸张大小选 A4（21 × 29.7 厘米）
+    reference: 《本科毕业论文撰写规范》纸张要求
+
+  - id: layout.margin.top
+    name: 上页边距
+    category: layout
+    severity: error
+    checker: prop_equals
+    params: {target: section, prop: margin_top_cm, expected: 2.5, tol: 0.2}
+    suggestion: 布局 → 页边距 → 自定义页边距，把上边距改为 2.5 厘米
+    reference: 《本科毕业论文撰写规范》版面要求
+
+  - id: layout.margin.bottom
+    name: 下页边距
+    category: layout
+    severity: error
+    checker: prop_equals
+    params: {target: section, prop: margin_bottom_cm, expected: 2.5, tol: 0.2}
+    suggestion: 布局 → 页边距 → 自定义页边距，把下边距改为 2.5 厘米
+    reference: 《本科毕业论文撰写规范》版面要求
+
+  - id: layout.margin.left
+    name: 左页边距（装订边）
+    category: layout
+    severity: error
+    checker: prop_equals
+    params: {target: section, prop: margin_left_cm, expected: 3.0, tol: 0.2}
+    suggestion: 左侧需预留装订空间，请在页面设置中把左边距改为 3.0 厘米
+    reference: 《本科毕业论文撰写规范》版面要求
+
+  - id: layout.margin.right
+    name: 右页边距
+    category: layout
+    severity: error
+    checker: prop_equals
+    params: {target: section, prop: margin_right_cm, expected: 2.5, tol: 0.2}
+    suggestion: 页面设置中将右边距改为 2.5 厘米
+    reference: 《本科毕业论文撰写规范》版面要求
+
+  - id: layout.page.number
+    name: 页脚页码
+    category: layout
+    severity: warning
+    checker: page_number_present
+    params: {}
+    suggestion: 插入 → 页码 → 页面底端居中，正文应从第 1 页开始编码
+    reference: 《本科毕业论文撰写规范》页码要求
+
+  - id: layout.title.length
+    name: 题目字数
+    category: layout
+    severity: info
+    checker: length_range
+    params: {target: title, min: 5, max: 40}
+    suggestion: 题目应简明扼要，一般不超过 40 字，必要时可用副标题
+    reference: 《本科毕业论文撰写规范》题目要求
+
+  - id: layout.title.font
+    name: 题目字体
+    category: layout
+    severity: info
+    checker: prop_in_set
+    params: {scope: title, prop: font_eastasia, allowed: [黑体, 宋体, 微软雅黑]}
+    suggestion: 题目常用黑体或宋体二号加粗
+    reference: 《本科毕业论文撰写规范》题目要求
+    scope_label: 论文题目
+
+  - id: layout.title.size
+    name: 题目的字号
+    category: layout
+    severity: info
+    checker: prop_equals
+    params: {scope: title, prop: font_size, expected: 22, tol: 1}
+    suggestion: 题目常用二号（22 磅）加粗居中
+    reference: 《本科毕业论文撰写规范》题目要求
+    scope_label: 论文题目
+
+  - id: layout.body.font
+    name: 正文字体
+    category: layout
+    severity: error
+    checker: prop_in_set
+    params: {scope: body, prop: font_eastasia, allowed: [宋体, 仿宋, 楷体]}
+    suggestion: 正文中文应为宋体（部分学校允许仿宋、楷体），请修改「正文」样式的字体，不要逐段手改
+    reference: 《本科毕业论文撰写规范》字体要求
+    scope_label: 正文段落
+
+  - id: layout.body.size
+    name: 正文字号
+    category: layout
+    severity: error
+    checker: prop_equals
+    params: {scope: body, prop: font_size, expected: 12, tol: 0.5}
+    suggestion: 正文应为小四号（12 磅），建议修改「正文」样式而不是逐段调整
+    reference: 《本科毕业论文撰写规范》字号要求
+    scope_label: 正文段落
+
+  - id: layout.body.line_spacing
+    name: 正文行距（倍数）
+    category: layout
+    severity: warning
+    checker: prop_range
+    params: {scope: body, prop: line_spacing, min: 1.2, max: 2.0, kind_prop: line_spacing_kind, kind_value: multiple}
+    suggestion: 正文行距建议 1.5 倍。段落 → 行距 → 1.5 倍行距
+    reference: 《本科毕业论文撰写规范》行距要求
+    scope_label: 正文段落（倍数行距）
+
+  - id: layout.body.line_spacing_exact
+    name: 正文行距（固定值）
+    category: layout
+    severity: warning
+    checker: prop_range
+    params: {scope: body, prop: line_spacing, min: 18, max: 28, kind_prop: line_spacing_kind, kind_value: points}
+    suggestion: 若使用固定行距，建议设在 20～24 磅之间（小四号正文对应 1.5 倍约为 22 磅）
+    reference: 《本科毕业论文撰写规范》行距要求
+    scope_label: 正文段落（固定行距）
+
+  - id: layout.body.align
+    name: 正文对齐方式
+    category: layout
+    severity: info
+    checker: prop_equals
+    params: {scope: body, prop: align, expected: both}
+    suggestion: 正文应两端对齐（Ctrl+J），避免出现右边缘参差不齐
+    reference: 《本科毕业论文撰写规范》段落要求
+    scope_label: 正文段落
+
+  - id: layout.body.first_line_indent
+    name: 正文首行缩进
+    category: layout
+    severity: warning
+    checker: prop_equals
+    params: {scope: body, prop: first_line_indent, expected: 0.85, tol: 0.25}
+    suggestion: 中文正文每段首行缩进 2 个字符（小四号约 0.85 厘米），不要用空格凑
+    reference: 《本科毕业论文撰写规范》段落要求
+    scope_label: 正文段落
+
+  - id: layout.heading1.font
+    name: 一级标题字体
+    category: layout
+    severity: warning
+    checker: prop_equals
+    params: {scope: heading1, prop: font_eastasia, expected: 黑体}
+    suggestion: 一级标题常用黑体，请修改「标题 1」样式的字体
+    reference: 《本科毕业论文撰写规范》标题要求
+    scope_label: 一级标题
+
+  - id: layout.heading1.size
+    name: 一级标题字号
+    category: layout
+    severity: warning
+    checker: prop_equals
+    params: {scope: heading1, prop: font_size, expected: 16, tol: 0.5}
+    suggestion: 一级标题常用三号（16 磅），请修改「标题 1」样式
+    reference: 《本科毕业论文撰写规范》标题要求
+    scope_label: 一级标题
+
+  - id: layout.heading1.align
+    name: 一级标题对齐
+    category: layout
+    severity: info
+    checker: prop_equals
+    params: {scope: heading1, prop: align, expected: center}
+    suggestion: 一级标题一般居中，请修改「标题 1」样式的对齐方式
+    reference: 《本科毕业论文撰写规范》标题要求
+    scope_label: 一级标题
+
+  - id: layout.heading2.size
+    name: 二级标题字号
+    category: layout
+    severity: warning
+    checker: prop_equals
+    params: {scope: heading2, prop: font_size, expected: 14, tol: 0.5}
+    suggestion: 二级标题常用四号（14 磅），请修改「标题 2」样式
+    reference: 《本科毕业论文撰写规范》标题要求
+    scope_label: 二级标题
+
+  - id: layout.heading3.size
+    name: 三级标题字号
+    category: layout
+    severity: warning
+    checker: prop_equals
+    params: {scope: heading3, prop: font_size, expected: 12, tol: 0.5}
+    suggestion: 三级标题常用小四号（12 磅），请修改「标题 3」样式
+    reference: 《本科毕业论文撰写规范》标题要求
+    scope_label: 三级标题
+
+  - id: layout.heading.space_before
+    name: 标题段前间距
+    category: layout
+    severity: info
+    checker: prop_range
+    params: {scope: heading, prop: space_before, min: 6, max: 36}
+    suggestion: 标题与上文之间留 0.5～2 行空白（6～36 磅）更易阅读；删除多余空行改用「段前间距」
+    reference: 《本科毕业论文撰写规范》段落要求
+    scope_label: 全部标题
+
+  - id: layout.caption.size
+    name: 图表题注字号
+    category: layout
+    severity: info
+    checker: prop_equals
+    params: {scope: caption, prop: font_size, expected: 10.5, tol: 0.5}
+    suggestion: 图表题注常用五号（10.5 磅），并居中排在图表下方
+    reference: 《本科毕业论文撰写规范》图表要求
+    scope_label: 图表题注
+
+  - id: layout.caption.align
+    name: 图表题注对齐
+    category: layout
+    severity: info
+    checker: prop_equals
+    params: {scope: caption, prop: align, expected: center}
+    suggestion: 图表题注应居中对齐
+    reference: 《本科毕业论文撰写规范》图表要求
+    scope_label: 图表题注
+
+  - id: layout.abstract.font
+    name: 摘要字体
+    category: layout
+    severity: info
+    checker: prop_in_set
+    params: {scope: abstract, prop: font_eastasia, allowed: [宋体, 楷体]}
+    suggestion: 摘要正文一般用宋体或楷体，小四号
+    reference: 《本科毕业论文撰写规范》摘要要求
+    scope_label: 摘要段落
+
+  - id: layout.abstract.size
+    name: 摘要字号
+    category: layout
+    severity: warning
+    checker: prop_equals
+    params: {scope: abstract, prop: font_size, expected: 12, tol: 0.5}
+    suggestion: 摘要正文用小四号（12 磅）
+    reference: 《本科毕业论文撰写规范》摘要要求
+    scope_label: 摘要段落
+
+  - id: layout.keywords.size
+    name: 关键词字号
+    category: layout
+    severity: info
+    checker: prop_equals
+    params: {scope: keywords, prop: font_size, expected: 12, tol: 0.5}
+    suggestion: 关键词行用小四号（12 磅），标签「关键词：」可加粗
+    reference: 《本科毕业论文撰写规范》关键词要求
+    scope_label: 关键词行
+
+  - id: layout.reference.size
+    name: 参考文献字号
+    category: layout
+    severity: info
+    checker: prop_equals
+    params: {scope: reference, prop: font_size, expected: 10.5, tol: 0.5}
+    suggestion: 参考文献常用五号（10.5 磅），条目间可用单倍行距
+    reference: 《本科毕业论文撰写规范》参考文献要求
+    scope_label: 参考文献条目
+
+  # ============================================================ 二、结构完整性
+  - id: structure.heading.no_skip
+    name: 标题层级不跳级
+    category: structure
+    severity: error
+    checker: heading_no_skip
+    params: {}
+    suggestion: 标题必须逐级递进（1 → 2 → 3），不能在 2.1 之后直接出现 2.1.1.1 的兄弟层级；请改为逐级下降
+    reference: 《本科毕业论文撰写规范》章节结构要求
+    scope_label: 全部标题
+
+  - id: structure.heading.style_used
+    name: 标题使用 Word 标题样式
+    category: structure
+    severity: warning
+    checker: heading_style_used
+    params: {}
+    suggestion: 把标题套用「标题 1/2/3」样式（开始 → 样式），这样目录可以自动生成、导航窗格才能用
+    reference: 排版最佳实践
+    scope_label: 全部标题
+
+  - id: structure.heading.not_empty
+    name: 标题下必须有正文
+    category: structure
+    severity: warning
+    checker: empty_heading
+    params: {}
+    suggestion: 标题下面应紧跟正文内容；若该节暂时没有内容，请先补写或删除该标题
+    reference: 《本科毕业论文撰写规范》章节结构要求
+    scope_label: 全部标题
+
+  - id: structure.abstract.required
+    name: 必须有中文摘要
+    category: structure
+    severity: error
+    checker: required_section
+    params: {names: [摘要], positions: {摘要: "题目页之后、正文之前"}}
+    suggestion: 在目录前添加「摘要」章节，包含研究目的、方法、结果与结论
+    reference: 《本科毕业论文撰写规范》摘要要求
+
+  - id: structure.keywords.required
+    name: 必须有关键词
+    category: structure
+    severity: error
+    checker: required_section
+    params: {names: [关键词], positions: {关键词: "摘要正文之后，同一页"}}
+    suggestion: 摘要末尾另起一行写「关键词：」，用分号分隔 3～6 个词
+    reference: 《本科毕业论文撰写规范》关键词要求
+
+  - id: structure.references.required
+    name: 必须有参考文献
+    category: structure
+    severity: error
+    checker: required_section
+    params: {names: [参考文献], positions: {参考文献: "正文之后、致谢之前"}}
+    suggestion: 添加「参考文献」章节，条目按正文引用顺序编号
+    reference: 《本科毕业论文撰写规范》参考文献要求
+
+  - id: structure.acknowledgement.required
+    name: 建议包含致谢
+    category: structure
+    severity: info
+    checker: required_section
+    params: {names: [致谢]}
+    suggestion: 多数学校要求正文后附「致谢」，请核对学校模板
+    reference: 《本科毕业论文撰写规范》结构要求
+
+  - id: structure.figure.numbering
+    name: 图题注编号连续
+    category: structure
+    severity: warning
+    checker: numbering_continuous
+    params: {prefix: 图}
+    suggestion: 图题注编号应从 1 开始连续递增（或按「章-序」编号），不能跳号或重号
+    reference: 《本科毕业论文撰写规范》图表要求
+    scope_label: 图题注
+
+  - id: structure.table.numbering
+    name: 表题注编号连续
+    category: structure
+    severity: warning
+    checker: numbering_continuous
+    params: {prefix: 表}
+    suggestion: 表题注编号应从 1 开始连续递增（或按「章-序」编号），不能跳号或重号
+    reference: 《本科毕业论文撰写规范》图表要求
+    scope_label: 表题注
+
+  - id: structure.caption.referenced
+    name: 图表应在正文被引用
+    category: structure
+    severity: info
+    checker: caption_referenced
+    params: {}
+    suggestion: 正文中应出现「如图 2-1 所示」这类引用，否则图表成了孤立的插图
+    reference: 《本科毕业论文撰写规范》图表要求
+    scope_label: 图表题注
+
+  # ============================================================ 三、全文一致性
+  - id: consistency.heading1.font_size
+    name: 一级标题字号一致
+    category: consistency
+    severity: warning
+    checker: consistency
+    params: {scope: heading1, prop: font_size}
+    suggestion: 所有一级标题应使用同一字号（通常是「标题 1」样式）；找到少数派那几处，改成与其他标题一致
+    reference: 《本科毕业论文撰写规范》标题要求
+    scope_label: 一级标题
+
+  - id: consistency.heading1.font
+    name: 一级标题字体一致
+    category: consistency
+    severity: warning
+    checker: consistency
+    params: {scope: heading1, prop: font_eastasia}
+    suggestion: 所有一级标题字体应统一，建议统一改用「标题 1」样式
+    reference: 《本科毕业论文撰写规范》标题要求
+    scope_label: 一级标题
+
+  - id: consistency.heading2.font_size
+    name: 二级标题字号一致
+    category: consistency
+    severity: warning
+    checker: consistency
+    params: {scope: heading2, prop: font_size}
+    suggestion: 所有二级标题字号应统一
+    reference: 《本科毕业论文撰写规范》标题要求
+    scope_label: 二级标题
+
+  - id: consistency.heading3.font_size
+    name: 三级标题字号一致
+    category: consistency
+    severity: warning
+    checker: consistency
+    params: {scope: heading3, prop: font_size}
+    suggestion: 所有三级标题字号应统一
+    reference: 《本科毕业论文撰写规范》标题要求
+    scope_label: 三级标题
+
+  - id: consistency.heading.font
+    name: 标题字体整体一致
+    category: consistency
+    severity: info
+    checker: consistency
+    params: {scope: heading, prop: font_eastasia}
+    suggestion: 各级标题字体应成体系（如一级黑体、二级黑体、三级楷体），不要随手切换
+    reference: 排版最佳实践
+    scope_label: 全部标题
+
+  - id: consistency.body.font
+    name: 正文字体一致
+    category: consistency
+    severity: warning
+    checker: consistency
+    params: {scope: body, prop: font_eastasia}
+    suggestion: 正文中出现了另一种字体，通常是复制粘贴带进来的；用「清除格式」后重新套用正文样式
+    reference: 《本科毕业论文撰写规范》字体要求
+    scope_label: 正文段落
+
+  - id: consistency.body.align
+    name: 正文对齐方式一致
+    category: consistency
+    severity: info
+    checker: consistency
+    params: {scope: body, prop: align}
+    suggestion: 正文段落对齐方式应统一为两端对齐
+    reference: 排版最佳实践
+    scope_label: 正文段落
+
+  - id: consistency.body.line_spacing
+    name: 正文行距一致
+    category: consistency
+    severity: info
+    checker: consistency
+    params: {scope: body, prop: line_spacing}
+    suggestion: 正文行距应全文统一；个别段落行距不同往往是从别处粘贴造成的
+    reference: 排版最佳实践
+    scope_label: 正文段落
+
+  - id: consistency.caption.font_size
+    name: 图表题注字号一致
+    category: consistency
+    severity: info
+    checker: consistency
+    params: {scope: caption, prop: font_size}
+    suggestion: 所有图题注、表题注字号应统一
+    reference: 《本科毕业论文撰写规范》图表要求
+    scope_label: 图表题注
+
+  - id: consistency.caption.align
+    name: 图表题注对齐一致
+    category: consistency
+    severity: info
+    checker: consistency
+    params: {scope: caption, prop: align}
+    suggestion: 图表题注对齐方式应统一（一般居中）
+    reference: 排版最佳实践
+    scope_label: 图表题注
+
+  - id: consistency.reference.font_size
+    name: 参考文献字号一致
+    category: consistency
+    severity: info
+    checker: consistency
+    params: {scope: reference, prop: font_size}
+    suggestion: 参考文献条目字号应统一
+    reference: 《本科毕业论文撰写规范》参考文献要求
+    scope_label: 参考文献条目
+
+  - id: consistency.paragraph.uniform
+    name: 段落内字体字号统一
+    category: consistency
+    severity: warning
+    checker: paragraph_run_uniform
+    params: {}
+    suggestion: 同一段落内混用了多种字体/字号，通常是从外部粘贴造成；全选该段后「清除格式」再重新套样式
+    reference: 排版最佳实践
+    scope_label: 正文段落
+
+  - id: consistency.blank_lines
+    name: 避免连续空行
+    category: consistency
+    severity: info
+    checker: blank_line_run
+    params: {max_consecutive: 1}
+    suggestion: 用「段前/段后间距」或「分页符」控制间距，不要敲回车凑空白
+    reference: 排版最佳实践
+    scope_label: 全文
+
+  # ============================================================ 四、内容规范
+  - id: content.punctuation.mix
+    name: 中文语句标点统一
+    category: content
+    severity: warning
+    checker: punctuation_mix
+    params: {}
+    suggestion: 中文句子里的逗号句号要用全角「，。」，英文半角只用在数字、公式和英文缩写之间
+    reference: 《标点符号用法》GB/T 15834
+    scope_label: 中文段落
+
+  - id: content.reference.format
+    name: 参考文献著录要素完整
+    category: content
+    severity: warning
+    checker: reference_format
+    params: {}
+    suggestion: "按 GB/T 7714 补齐要素：作者. 题名[文献类型标识]. 出处, 年份: 页码. 例如「张三. 深度学习综述[J]. 计算机学报, 2023: 1-10.」"
+    reference: 《信息与文献 参考文献著录规则》GB/T 7714
+    scope_label: 参考文献条目
+
+  - id: content.abstract.length
+    name: 摘要字数
+    category: content
+    severity: warning
+    checker: length_range
+    params: {target: abstract, min: 200, max: 800}
+    suggestion: 本科毕业论文摘要一般 300～500 字，含研究目的、方法、结果、结论四要素
+    reference: 《本科毕业论文撰写规范》摘要要求
+    scope_label: 摘要
+
+  - id: content.keywords.count
+    name: 关键词数量
+    category: content
+    severity: warning
+    checker: length_range
+    params: {target: keywords, min: 3, max: 6}
+    suggestion: 关键词 3～6 个，用分号分隔，最后一个词后不加标点
+    reference: 《本科毕业论文撰写规范》关键词要求
+    scope_label: 关键词行
+
+  - id: content.reference.count
+    name: 参考文献数量
+    category: content
+    severity: info
+    checker: length_range
+    params: {target: reference, min: 8, max: 100}
+    suggestion: 本科毕业论文参考文献一般不少于 8 篇，且应有近五年的文献
+    reference: 《本科毕业论文撰写规范》参考文献要求
+    scope_label: 参考文献

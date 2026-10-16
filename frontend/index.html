@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>格致 · 学术文档格式智能检查与规范化助手</title>
+  <link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/element-plus.css">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<!-- 本页是「in-DOM 模板」：浏览器先解析 HTML，Vue 再编译 #app 里的内容。
+     因此所有 el-* 自定义组件必须写显式闭合标签（<el-tag></el-tag>），
+     绝对不能写成 `<el-tag ... />`——浏览器不认自定义元素的自闭合写法，
+     会把后面的兄弟节点全部当成它的子节点，而这些节点会被静默丢弃、控制台零报错。 -->
+<div id="app" v-cloak>
+
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-logo" src="/assets/logo.svg" alt="格致">
+      <div>
+        <h1>{{ config.app_name || '格致 · 学术文档格式智能检查与规范化助手' }}</h1>
+        <p class="sub">
+          规则集 <b>{{ config.ruleset ? config.ruleset.name : '—' }}</b> ·
+          共 <b>{{ config.ruleset ? config.ruleset.rule_count : 0 }}</b> 条规则 ·
+          服务 <b>{{ health.status || '未知' }}</b> ·
+          <span class="ilink" @click="showShortcuts = true">快捷键</span>
+        </p>
+      </div>
+    </div>
+    <div class="status">
+      <el-radio-group v-model="view" size="small">
+        <el-radio-button value="check">检查</el-radio-button>
+        <el-radio-button value="rules">规则库</el-radio-button>
+        <el-radio-button value="stats">统计</el-radio-button>
+      </el-radio-group>
+      <el-tag size="small" type="info">已检查 {{ health.checked || 0 }} 份</el-tag>
+      <el-tag size="small" :type="health.status === 'ok' ? 'success' : 'danger'">
+        服务 {{ health.status || '未知' }}
+      </el-tag>
+    </div>
+  </header>
+
+  <!-- ============================================================ 检查视图 -->
+  <div class="workspace" v-show="view === 'check'">
+
+    <div class="side">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>受检文档<span class="count">.docx</span></h2>
+        </div>
+
+        <div class="dropzone"
+             :class="{ 'is-over': dragging }"
+             @click="pickFile"
+             @dragover.prevent="dragging = true"
+             @dragenter.prevent="dragging = true"
+             @dragleave.prevent="dragging = false"
+             @drop.prevent="onDrop">
+          <svg class="dz-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M13 6h9l7 7v19a2 2 0 0 1-2 2H13a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
+                  stroke="#7F77DD" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M22 6v7h7" stroke="#7F77DD" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M15 24l3 3 6-7" stroke="#534AB7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div class="dz-title">把论文拖到这里，或点击选择文件</div>
+          <div class="dz-hint">
+            只接受 .docx（旧版 .doc 请先在 Word 中另存为 .docx）<br>
+            单个文件不超过 {{ config.max_upload_mb || 20 }} MB
+          </div>
+        </div>
+
+        <input ref="fileInput" class="hidden-input" type="file" accept=".docx" @change="onFileChange">
+
+        <div style="margin-top: 14px;" v-if="samples.length">
+          <div class="panel-head" style="margin-bottom: 8px;">
+            <h2 style="font-size: 12px; color: var(--hint); font-weight: 400;">一键载入演示样例</h2>
+          </div>
+          <div class="sample-row">
+            <span class="sample-chip"
+                  v-for="item in samples"
+                  :key="item.name"
+                  @click="importSample(item)">{{ sampleLabel(item.name) }}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>文档列表<span class="count">{{ documents.length }}</span></h2>
+          <el-button size="small" text @click="loadDocuments()">刷新</el-button>
+        </div>
+
+        <div v-if="!documents.length" class="empty" style="padding: 22px 8px;">
+          还没有文档。上传一份 .docx，或点上面的样例一键载入。
+        </div>
+
+        <ul class="doc-list" v-else>
+          <li class="doc-item"
+              v-for="item in documents"
+              :key="item.id"
+              :class="{ active: current && current.id === item.id }"
+              @click="selectDocument(item)">
+            <div class="name">
+              <span :title="item.filename">{{ item.filename }}</span>
+              <span class="score-pill" :class="scoreClass(item.score)">
+                {{ item.score === null || item.score === undefined ? '未检查' : item.score + ' 分' }}
+              </span>
+            </div>
+            <div class="meta">
+              <span>{{ item.paragraph_count }} 段</span>
+              <span v-if="item.issue_summary">错 {{ item.issue_summary.error }} · 警 {{ item.issue_summary.warning }}</span>
+              <span>{{ item.uploaded_at }}</span>
+            </div>
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <div>
+      <section class="panel" v-if="!current">
+        <div class="empty">
+          <svg viewBox="0 0 120 92" xmlns="http://www.w3.org/2000/svg">
+            <rect x="34" y="8" width="52" height="70" rx="6" fill="#FFFFFF" stroke="#CECBF6" stroke-width="1.4"/>
+            <path d="M52 8h24a6 6 0 0 1 6 6v58a6 6 0 0 1-6 6H52z" fill="#EEEDFE"/>
+            <rect x="44" y="24" width="32" height="3" rx="1.5" fill="#CECBF6"/>
+            <rect x="44" y="34" width="24" height="3" rx="1.5" fill="#CECBF6"/>
+            <rect x="44" y="44" width="30" height="3" rx="1.5" fill="#CECBF6"/>
+            <path d="m46 60 6 6 12-14" stroke="#534AB7" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="92" cy="66" r="16" fill="#FFFFFF" stroke="#EF9F27" stroke-width="1.6"/>
+            <circle cx="92" cy="66" r="16" fill="#FAEEDA" opacity="0.55"/>
+            <path d="M92 58v10M92 72.5v.5" stroke="#854F0B" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
+          <div class="empty-title">选择左侧文档，点「开始检查」</div>
+          30 秒内得到一张带精确定位的格式体检报告：<br>
+          每条问题都给出现位置、实际值、期望值、当前出处和整改建议。<br>
+          <span class="muted">无法确定的项目会标为「待人工确认」，宁可不报，也不误报。</span>
+        </div>
+      </section>
+
+      <template v-else>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>{{ current.filename }}<span class="count">{{ current.paragraph_count }} 段 · {{ current.char_count }} 字 · {{ current.heading_count }} 个标题</span></h2>
+            </div>
+            <div>
+              <el-button size="small" :loading="checking" type="primary" @click="runCheck">
+                {{ report ? '重新检查' : '开始检查' }}
+              </el-button>
+              <el-button size="small" @click="exportReport('markdown')" :disabled="!report">导出整改清单</el-button>
+              <el-button size="small" @click="exportReport('html')" :disabled="!report">HTML 报告</el-button>
+              <el-button size="small" text type="danger" @click="removeDocument">删除</el-button>
+            </div>
+          </div>
+
+          <div v-if="checking" class="running">
+            <div class="running-head">
+              <span>正在逐条执行规则 —— {{ feed.length }} / {{ expectedRuleCount }}</span>
+              <span class="pct">{{ progress }}%</span>
+            </div>
+            <div class="progress-track"><i :style="{ width: progress + '%' }"></i></div>
+            <ul class="rule-feed">
+              <li v-for="row in feed.slice(-9)" :key="row.rule_id">
+                <span class="dot" :class="row.status"></span>
+                <span>{{ row.name }}</span>
+                <span class="rid">{{ row.rule_id }}</span>
+                <span class="muted" v-if="row.status === 'fail'">发现 {{ row.fail_count }} 处问题</span>
+              </li>
+            </ul>
+          </div>
+
+          <div v-else-if="!report" class="empty" style="padding: 30px;">
+            <div class="empty-title">还没有检查记录</div>
+            点右上角「开始检查」，或先看看左侧的演示样例。
+          </div>
+
+          <template v-else>
+            <div class="score-card">
+              <div>
+                <div class="score-value" :style="{ color: report.grade_color }">
+                  {{ report.score === null ? '—' : report.score }}<small>/ 100</small>
+                </div>
+                <div class="score-grade" :style="{ color: report.grade_color }">{{ report.grade_label }}</div>
+              </div>
+              <div style="flex: 1;">
+                <div class="score-meta">
+                  <span>规则覆盖率 <b>{{ report.coverage }}%</b></span>
+                  <span>耗时 <b>{{ report.elapsed_ms }} ms</b></span>
+                  <span>原始加权分 <b>{{ report.raw_score }}</b></span>
+                  <span>扣分 <b>-{{ report.penalty }}</b></span>
+                </div>
+                <div class="sev-chips">
+                  <span class="sev-chip error">错误 {{ report.issue_summary.error }}</span>
+                  <span class="sev-chip warning">警告 {{ report.issue_summary.warning }}</span>
+                  <span class="sev-chip info">提示 {{ report.issue_summary.info }}</span>
+                  <span class="sev-chip unknown">待人工确认 {{ report.issue_summary.unknown }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="dimension-grid">
+              <div>
+                <div class="cat-row" v-for="cat in report.category_scores" :key="cat.key">
+                  <span>{{ cat.label }}</span>
+                  <span class="bar"><i :style="{ width: (cat.score === null ? 0 : cat.score) + '%' }"></i></span>
+                  <span class="num">{{ cat.score === null ? '—' : cat.score }}</span>
+                </div>
+                <div class="muted" style="font-size: 12px; margin-top: 8px; line-height: 1.8;">
+                  权重：排版 30% · 结构 30% · 一致性 20% · 内容 20%；每个错误另扣 4 分（最多扣 30 分）。
+                  取不到的属性不计入分母，避免误报拉低分数。
+                </div>
+              </div>
+              <div class="radar">
+                <svg viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="维度雷达图">
+                  <polygon :points="radarGrid" fill="#FAFAF7" stroke="#E5E3DC" stroke-width="1"/>
+                  <polygon :points="radarMid" fill="none" stroke="#F1EFE8" stroke-width="1"/>
+                  <line v-for="axis in radarAxes" :key="axis.label"
+                        :x1="axis.cx" :y1="axis.cy" :x2="axis.x" :y2="axis.y"
+                        stroke="#E5E3DC" stroke-width="1"/>
+                  <polygon :points="radarPoints" fill="#EEEDFE" fill-opacity="0.85" stroke="#534AB7" stroke-width="1.6"/>
+                  <circle v-for="point in radarDots" :key="point.label" :cx="point.x" :cy="point.y" r="3" fill="#534AB7"/>
+                  <text v-for="axis in radarAxes" :key="'t' + axis.label"
+                        :x="axis.tx" :y="axis.ty" font-size="11" fill="#5F5E5A"
+                        text-anchor="middle" dominant-baseline="central">{{ axis.label }}</text>
+                </svg>
+              </div>
+            </div>
+
+            <div class="notice" v-if="report.notes && report.notes.length">
+              <div class="title">关于这份报告的几点说明</div>
+              <div v-for="(note, index) in report.notes" :key="index">· {{ note }}</div>
+              <div>· 本工具只检查格式与结构规范，不判断学术内容质量。</div>
+            </div>
+          </template>
+        </section>
+
+        <section class="panel" v-if="report" style="margin-top: 16px;">
+          <el-tabs v-model="tab">
+            <el-tab-pane :label="'问题清单 ' + visibleIssues.length" name="issues"></el-tab-pane>
+            <el-tab-pane label="原文对照" name="doc"></el-tab-pane>
+            <el-tab-pane label="修复与导出" name="fix"></el-tab-pane>
+            <el-tab-pane :label="'规则执行明细 ' + report.rule_results.length" name="rules"></el-tab-pane>
+          </el-tabs>
+
+          <!-- 问题清单 -->
+          <div v-if="tab === 'issues'">
+            <div class="toolbar">
+              <el-radio-group v-model="sevFilter" size="small">
+                <el-radio-button value="all">全部</el-radio-button>
+                <el-radio-button value="error">错误</el-radio-button>
+                <el-radio-button value="warning">警告</el-radio-button>
+                <el-radio-button value="info">提示</el-radio-button>
+                <el-radio-button value="unknown">待确认</el-radio-button>
+              </el-radio-group>
+              <el-select v-model="catFilter" size="small" style="width: 150px;" placeholder="全部维度">
+                <el-option label="全部维度" value="all"></el-option>
+                <el-option v-for="cat in report.category_scores" :key="cat.key" :label="cat.label" :value="cat.key"></el-option>
+              </el-select>
+              <span class="spacer"></span>
+              <span class="muted" v-if="ignoredCount">
+                已忽略 {{ ignoredCount }} 项
+                <span class="ilink" @click="restoreIgnored">全部恢复</span>
+              </span>
+              <el-button size="small" @click="copyMarkdown">复制为 Markdown</el-button>
+            </div>
+
+            <div v-if="!visibleIssues.length" class="empty" style="padding: 30px;">
+              <div class="empty-title">没有符合当前筛选条件的问题</div>
+              这通常意味着文档在这一维度上是规范的。
+            </div>
+
+            <div class="issue-list" v-else>
+              <div class="issue"
+                   v-for="(issue, index) in visibleIssues"
+                   :key="issueKey(issue, index)"
+                   :class="[issue.status === 'fail' ? issue.severity : 'unknown', { 'is-current': index === currentIssueIndex }]">
+                <div class="issue-head">
+                  <span class="rule">{{ issue.rule_name }}</span>
+                  <span class="tag">{{ issue.category_label }}</span>
+                  <span class="tag">{{ issue.status === 'fail' ? issue.severity_label : '待人工确认' }}</span>
+                  <span class="loc">{{ locationText(issue) }}</span>
+                </div>
+                <div class="issue-msg">{{ issue.message }}</div>
+                <div class="issue-kv">
+                  <span class="k" v-if="issue.actual">实际</span>
+                  <span v-if="issue.actual">{{ issue.actual }}</span>
+                  <span class="k" v-if="issue.expected">期望</span>
+                  <span v-if="issue.expected">{{ issue.expected }}</span>
+                  <span class="k" v-if="issue.source_text">当前来源</span>
+                  <span v-if="issue.source_text">{{ issue.source_text }}</span>
+                  <span class="k" v-if="issue.location && issue.location.snippet">原文</span>
+                  <span class="snippet" v-if="issue.location && issue.location.snippet">{{ issue.location.snippet }}</span>
+                </div>
+                <div class="issue-actions">
+                  <el-button size="small" text type="primary" @click="locate(issue)"
+                             :disabled="issue.location.paragraph_index === null || issue.location.paragraph_index === undefined">
+                    定位到原文
+                  </el-button>
+                  <el-button size="small" text @click="ignoreIssue(issue)">忽略并记住</el-button>
+                  <span class="muted" style="font-size: 12px; align-self: center;" v-if="issue.suggestion">
+                    {{ issue.suggestion }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 原文对照 -->
+          <div v-else-if="tab === 'doc'">
+            <div class="legend">
+              <span><i style="background: #FCEBEB;"></i>错误</span>
+              <span><i style="background: #FAEEDA;"></i>警告</span>
+              <span><i style="background: #E6F1FB;"></i>提示</span>
+              <span><i style="background: #F1EFE8;"></i>待人工确认</span>
+              <span class="muted">按 ↑ / ↓ 在问题之间跳转，Esc 回到清单</span>
+            </div>
+            <div class="compare">
+              <div class="paragraphs" ref="paragraphBox">
+                <div class="para"
+                     v-for="para in paragraphs"
+                     :key="para.index"
+                     :id="'para-' + para.index"
+                     :class="[para.kind === 'empty' ? 'empty' : para.kind, hitClass(para.index), { 'is-target': para.index === targetIndex }]">
+                  <span class="idx">{{ para.index + 1 }}</span>
+                  <span class="txt">
+                    <span v-if="!para.text.trim()" class="muted">（空段落）</span>
+                    <span v-else>{{ para.text }}</span>
+                    <span class="muted mono" style="margin-left: 6px;" v-if="para.style_name">
+                      [{{ para.style_name }}<template v-if="para.format && para.format.font_size"> · {{ para.format.font_size }} 磅</template>]
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 修复与导出 -->
+          <div v-else-if="tab === 'fix'">
+            <div class="notice">
+              <div class="title">为什么不做「全自动修复」？</div>
+              <div>· Word 的格式是继承出来的，全自动改写有把论文改坏的风险；</div>
+              <div>· 因此这里只提供 4 项低风险操作，每项都可以单独勾选、单独回退；</div>
+              <div>· 修复结果一律生成为<b>新文件</b>，原文件绝不改动。</div>
+            </div>
+
+            <div class="fix-actions">
+              <label class="fix-item" v-for="action in config.fix_actions" :key="action.id">
+                <input class="fix-check" type="checkbox" :value="action.id" v-model="fixActions">
+                <span class="fix-body">
+                  <span class="fix-title">{{ action.label }}</span>
+                  <span class="risk" :class="action.risk">风险 {{ action.risk }}</span>
+                  <div class="fix-desc">{{ action.description }}</div>
+                  <div class="fix-desc" v-if="action.note">（{{ action.note }}）</div>
+                </span>
+              </label>
+            </div>
+
+            <div class="toolbar">
+              <el-button type="primary" size="small" :loading="fixing" :disabled="!fixActions.length" @click="runFix">
+                生成规范化文件
+              </el-button>
+              <el-button size="small" @click="exportReport('markdown')">导出整改清单</el-button>
+              <el-button size="small" @click="exportReport('html')">导出 HTML 报告</el-button>
+              <el-button size="small" @click="copyMarkdown">复制为 Markdown</el-button>
+              <span class="spacer"></span>
+              <span class="muted">修复后建议重新检查一次</span>
+            </div>
+
+            <div class="fix-result" v-if="fixResult">
+              <div class="row">
+                <b>共修改 {{ fixResult.total_changed }} 处</b>
+                <span class="muted">（{{ fixResult.notice }}）</span>
+              </div>
+              <div class="row" v-for="item in fixResult.results" :key="item.action">
+                {{ actionLabel(item.action) }}：{{ item.changed }} 处
+                <div class="samples" v-if="item.samples && item.samples.length">
+                  <div v-for="(sample, index) in item.samples" :key="index">· {{ sample }}</div>
+                </div>
+              </div>
+              <div class="row">
+                <el-button size="small" type="primary" @click="downloadFixed">下载修复后的文档</el-button>
+                <span class="muted" style="margin-left: 10px;">{{ fixResult.filename }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 规则执行明细 -->
+          <div v-else>
+            <div class="toolbar">
+              <el-radio-group v-model="ruleResultFilter" size="small">
+                <el-radio-button value="all">全部 {{ report.rule_results.length }}</el-radio-button>
+                <el-radio-button value="fail">未通过</el-radio-button>
+                <el-radio-button value="pass">通过</el-radio-button>
+                <el-radio-button value="unknown">待确认</el-radio-button>
+              </el-radio-group>
+            </div>
+            <div class="rule-wrap">
+              <table class="rule-table">
+                <thead>
+                  <tr>
+                    <th style="width: 190px;">规则</th>
+                    <th style="width: 96px;">维度</th>
+                    <th style="width: 76px;">级别</th>
+                    <th style="width: 84px;">结果</th>
+                    <th>说明</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in filteredRuleResults" :key="row.rule_id">
+                    <td>
+                      <div>{{ row.rule_name }}</div>
+                      <div class="rid">{{ row.rule_id }}</div>
+                    </td>
+                    <td>{{ row.category_label }}</td>
+                    <td>{{ row.severity_label }}</td>
+                    <td>
+                      <el-tag size="small" :type="ruleStatusType(row.status)">{{ ruleStatusText(row.status) }}</el-tag>
+                    </td>
+                    <td>{{ row.note || ('检查了 ' + row.checked_count + ' 项' + (row.fail_count ? '，未通过 ' + row.fail_count + ' 项' : '')) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </template>
+    </div>
+  </div>
+
+  <!-- ============================================================ 规则库视图 -->
+  <div class="workspace" v-show="view === 'rules'" style="grid-template-columns: minmax(0, 1fr);">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>规则库<span class="count" v-if="ruleset">{{ ruleset.name }} · v{{ ruleset.version }} · {{ ruleset.rule_count }} 条规则</span></h2>
+        <div>
+          <el-button size="small" @click="resetRuleset">恢复内置默认</el-button>
+          <el-button size="small" type="primary" :loading="savingYaml" @click="saveYaml">保存 YAML 修改</el-button>
+        </div>
+      </div>
+
+      <div class="notice">
+        <div class="title">规则是数据，不是代码</div>
+        <div>· 新增一条规则只需要在右侧 YAML 里加几行：指定用哪个 checker、检查哪个属性、期望值是多少；</div>
+        <div>· 引擎不认识任何具体规则，因此改规则不需要改代码、也不需要重新测试引擎；</div>
+        <div>· 可用 checker 共 {{ (config.checkers || []).length }} 个，可检查范围 {{ (config.scopes || []).map(s => s.label).join('、') }}。</div>
+      </div>
+
+      <el-tabs v-model="ruleTab">
+        <el-tab-pane label="可视化配置" name="table"></el-tab-pane>
+        <el-tab-pane :label="'快速调整' + (quickDirtyCount ? ' · ' + quickDirtyCount + ' 项待保存' : '')" name="quick"></el-tab-pane>
+        <el-tab-pane :label="'参考模板校准' + (tplResult ? ' · ' + tplResult.counts.proposed : '')" name="template"></el-tab-pane>
+        <el-tab-pane label="YAML 原文" name="yaml"></el-tab-pane>
+        <el-tab-pane :label="'规则集说明 ' + (config.checkers || []).length" name="meta"></el-tab-pane>
+      </el-tabs>
+
+      <div v-if="ruleTab === 'table'">
+        <div class="toolbar">
+          <el-input v-model="ruleKeyword" size="small" style="width: 230px;" placeholder="搜索规则名 / 属性 / 说明"></el-input>
+          <el-select v-model="ruleCat" size="small" style="width: 160px;">
+            <el-option label="全部维度" value="all"></el-option>
+            <el-option v-for="cat in config.categories" :key="cat.key" :label="cat.label" :value="cat.key"></el-option>
+          </el-select>
+          <span class="spacer"></span>
+          <span class="muted">已启用 {{ enabledRuleCount }} / {{ (ruleset && ruleset.rules || []).length }}</span>
+        </div>
+        <div class="rule-wrap">
+          <table class="rule-table">
+            <thead>
+              <tr>
+                <th style="width: 56px;">启用</th>
+                <th style="width: 210px;">规则</th>
+                <th style="width: 96px;">维度</th>
+                <th style="width: 76px;">级别</th>
+                <th style="width: 250px;">参数</th>
+                <th>整改建议</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="rule in filteredRules" :key="rule.id">
+                <td>
+                  <el-switch :model-value="rule.enabled" size="small" @change="value => toggleRule(rule, value)"></el-switch>
+                </td>
+                <td>
+                  <div>{{ rule.name }}</div>
+                  <div class="rid">{{ rule.id }}</div>
+                </td>
+                <td>{{ rule.category_label }}</td>
+                <td>{{ rule.severity_label }}</td>
+                <td class="params">{{ JSON.stringify(rule.params) }}</td>
+                <td>{{ rule.suggestion }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div v-else-if="ruleTab === 'quick'">
+        <div class="notice">
+          <div class="title">改一个数字，全库规则立刻生效</div>
+          <div>· 下面每一项都对应一条**真实存在的规则**，改完点「保存调整」即可，不用写 YAML；</div>
+          <div>· 这里只列「靠阈值判定」的规则（字号、行距、页边距、缩进、字数区间等）；结构类规则没有数字可调，所以不在此列；</div>
+          <div>· 保存后立即对新检查生效，旧的检查报告不受影响；需要回退时点右上角「恢复内置默认」。</div>
+        </div>
+
+        <div class="toolbar" v-if="quickGroups.length">
+          <span class="muted">
+            共 {{ quickItemCount }} 项可调阈值，分 {{ quickGroups.length }} 组 ·
+            <b v-if="quickDirtyCount" style="color: var(--warn);">{{ quickDirtyCount }} 项已修改，尚未保存</b>
+            <span v-else>当前与规则集一致</span>
+          </span>
+          <span class="spacer"></span>
+          <el-button size="small" :disabled="!quickDirtyCount" @click="discardQuick">放弃修改</el-button>
+          <el-button size="small" type="primary" :disabled="!quickDirtyCount" :loading="savingQuick" @click="saveQuick">
+            保存调整
+          </el-button>
+        </div>
+
+        <div class="empty" v-if="!quickGroups.length" style="padding: 26px;">正在读取规则集…</div>
+
+        <div class="quick-group" v-for="group in quickGroups" :key="group.group">
+          <h3 class="quick-group-head">{{ group.group }}<span class="count">{{ group.items.length }} 项</span></h3>
+          <div class="quick-grid">
+            <div class="quick-card"
+                 v-for="item in group.items"
+                 :key="item.rule_id"
+                 :class="{ 'is-dirty': isQuickDirty(item.rule_id), 'is-off': !item.enabled }">
+              <div class="quick-head">
+                <span class="quick-name">{{ item.name }}</span>
+                <span class="tag-off" v-if="!item.enabled">已停用</span>
+              </div>
+              <div class="rid">{{ item.rule_id }}</div>
+              <div class="quick-note" v-if="item.scope_label || item.note">
+                {{ item.scope_label }}<span v-if="item.note"> · {{ item.note }}</span>
+              </div>
+
+              <div class="quick-row" v-if="item.kind === 'number'">
+                <el-input-number v-model="quickValues[item.rule_id].expected" size="small"
+                                 :min="item.limits[0]" :max="item.limits[1]" :step="item.step"
+                                 :precision="item.precision" controls-position="right"
+                                 style="width: 132px;"></el-input-number>
+                <span class="quick-unit">{{ item.unit }}</span>
+                <span class="quick-tol">容差</span>
+                <el-input-number v-model="quickValues[item.rule_id].tol" size="small"
+                                 :min="0" :max="5" :step="0.05" :precision="2" controls-position="right"
+                                 style="width: 122px;"></el-input-number>
+              </div>
+
+              <div class="quick-row" v-else-if="item.kind === 'range'">
+                <el-input-number v-model="quickValues[item.rule_id].min" size="small"
+                                 :min="item.limits[0]" :max="item.limits[1]" :step="item.step"
+                                 :precision="item.precision" controls-position="right"
+                                 style="width: 132px;"></el-input-number>
+                <span class="quick-unit">~ {{ item.unit }}</span>
+                <el-input-number v-model="quickValues[item.rule_id].max" size="small"
+                                 :min="item.limits[0]" :max="item.limits[1]" :step="item.step"
+                                 :precision="item.precision" controls-position="right"
+                                 style="width: 132px;"></el-input-number>
+              </div>
+
+              <div class="quick-row" v-else-if="item.kind === 'enum'">
+                <el-select v-model="quickValues[item.rule_id].expected" size="small" style="width: 190px;">
+                  <el-option v-for="option in item.options" :key="String(option.value)"
+                             :label="option.label" :value="option.value"></el-option>
+                </el-select>
+              </div>
+
+              <div class="quick-row" v-else>
+                <el-checkbox-group v-model="quickValues[item.rule_id].allowed" size="small">
+                  <el-checkbox v-for="option in item.options" :key="option.value"
+                               :value="option.value">{{ option.label }}</el-checkbox>
+                </el-checkbox-group>
+              </div>
+
+              <div class="quick-suggestion" v-if="item.suggestion">{{ item.suggestion }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="ruleTab === 'template'">
+        <div class="notice">
+          <div class="title">用你们学校的模板，来校准这套规则</div>
+          <div>· 上传一份**格式已经正确**的模板（学校下发的模板文件、或导师认可的定稿），系统会逐条量出它的字号、行距、页边距等；</div>
+          <div>· 推导结果**不会自动生效**，需要你逐条勾选后点「应用到规则集」；其中「占比」低的那几条说明模板本身就不统一，建议先核对再决定；</div>
+          <div>· 推导完全由「每条规则自己声明的检查目标」驱动，因此新增规则后这一能力会自动覆盖，不需要改代码。</div>
+        </div>
+
+        <div class="toolbar">
+          <input ref="tplInput" type="file" accept=".docx" style="display: none;" @change="onTemplateFile">
+          <el-button size="small" type="primary" :loading="tplLoading" @click="pickTemplate">
+            选择参考模板（.docx）
+          </el-button>
+          <el-button size="small" v-if="tplResult" @click="clearTemplate">清空结果</el-button>
+          <span class="spacer"></span>
+          <span class="muted" v-if="tplResult">
+            {{ tplResult.filename }} · 共 {{ tplResult.counts.total }} 条规则，
+            可推导 <b>{{ tplResult.counts.proposed }}</b> 项、
+            已一致 {{ tplResult.counts.unchanged }} 项、
+            无阈值 {{ tplResult.counts.not_applicable }} 项
+          </span>
+        </div>
+
+        <div class="empty" v-if="!tplResult" style="padding: 26px;">
+          还没有上传参考模板。<br>
+          <span class="muted">上传后这里会列出「模板实际格式 → 规则目标值」的逐条对照表。</span>
+        </div>
+
+        <template v-if="tplResult">
+          <h3 class="quick-group-head">模板格式画像<span class="count">量出来的实际格式</span></h3>
+          <div class="rule-wrap" style="max-height: 30vh; margin-bottom: 16px;">
+            <table class="rule-table">
+              <thead>
+                <tr>
+                  <th style="width: 130px;">页面 / 角色</th>
+                  <th v-for="column in tplProfileColumns" :key="column.prop" style="width: 132px;">{{ column.label }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="section in tplResult.profile.sections" :key="'sec-' + section.index">
+                  <td>第 {{ section.index + 1 }} 节</td>
+                  <td :colspan="tplProfileColumns.length">
+                    {{ section.page }} · 页边距 {{ section.margins }} ·
+                    {{ section.has_page_number ? '有页码' : '无页码' }}
+                  </td>
+                </tr>
+                <tr v-for="role in tplResult.profile.roles" :key="role.scope">
+                  <td>{{ role.label }}<span class="rid">×{{ role.paragraphs }}</span></td>
+                  <td v-for="column in tplProfileColumns" :key="column.prop">{{ tplCell(role, column.prop) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="toolbar">
+            <el-checkbox v-model="tplOnlyChanged" size="small">只看需要变更的（{{ tplResult.counts.proposed }} 项）</el-checkbox>
+            <span class="spacer"></span>
+            <span class="muted">已勾选 {{ tplSelectedCount }} 项</span>
+            <el-button size="small" @click="selectAllTemplateProposals">全选待变更</el-button>
+            <el-button size="small" :disabled="!tplSelectedCount" :loading="tplApplying"
+                       type="primary" @click="applyTemplate">应用到规则集</el-button>
+          </div>
+
+          <div class="rule-wrap">
+            <table class="rule-table">
+              <thead>
+                <tr>
+                  <th style="width: 52px;">应用</th>
+                  <th style="width: 180px;">规则</th>
+                  <th style="width: 118px;">检查对象</th>
+                  <th style="width: 150px;">当前阈值</th>
+                  <th style="width: 120px;">模板实测</th>
+                  <th style="width: 84px;">占比</th>
+                  <th>推导结果</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in visibleTemplateProposals" :key="row.rule_id">
+                  <td>
+                    <el-checkbox v-model="tplSelected[row.rule_id]" :disabled="row.status !== 'proposed'"></el-checkbox>
+                  </td>
+                  <td>
+                    <div>{{ row.rule_name }}</div>
+                    <div class="rid">{{ row.rule_id }}</div>
+                  </td>
+                  <td>{{ row.scope_label }}</td>
+                  <td class="params">{{ row.status === 'not_applicable' ? '—' : row.current_text }}</td>
+                  <td>{{ row.template_text || '—' }}</td>
+                  <td>
+                    <span v-if="row.confidence === null">—</span>
+                    <span v-else :class="{ 'low-confidence': row.confidence < 0.8 }">
+                      {{ Math.round(row.confidence * 100) }}%
+                      <span class="rid">({{ row.measured.dominant_count }}/{{ row.measured.count }})</span>
+                    </span>
+                  </td>
+                  <td>
+                    <span class="tag-proposed" v-if="row.status === 'proposed'">{{ row.proposal_text }}</span>
+                    <span class="tag-unchanged" v-else-if="row.status === 'unchanged'">与当前一致</span>
+                    <span class="muted" v-else>{{ row.message }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="notice" style="margin-top: 12px;">
+            <div class="title">推导口径（可写进答辩说明）</div>
+            <div>· 每一项都取模板中的**众数**（出现次数最多的取值），而不是平均值——模板里偶发的一两处异常格式不会带偏结论；</div>
+            <div>· 「占比」= 众数出现次数 / 参与统计的段落数，是这条结论的把握程度；占比低的项会标黄，提示模板本身不统一；</div>
+            <div>· 「当前阈值」只改 expected / min / max / allowed 这几个阈值参数，scope、checker、severity 一律不动。</div>
+          </div>
+        </template>
+      </div>
+
+      <div v-else-if="ruleTab === 'yaml'">
+        <div class="toolbar">
+          <span class="muted">保存前会自动校验：id 重复、未知 checker、缺少必要参数、YAML 语法错误都会在这里被拦下并说明原因。</span>
+          <span class="spacer"></span>
+          <span class="muted" v-if="yamlMessage">{{ yamlMessage }}</span>
+        </div>
+        <el-input class="yaml-editor" v-model="yamlText" type="textarea" :rows="24" spellcheck="false"></el-input>
+      </div>
+
+      <div v-else>
+        <div class="rule-wrap">
+          <table class="rule-table">
+            <thead>
+              <tr>
+                <th style="width: 190px;">检查器</th>
+                <th>作用</th>
+                <th style="width: 300px;">典型参数</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="checker in config.checkers" :key="checker.key">
+                <td class="params">{{ checker.key }}</td>
+                <td>{{ checker.summary }}</td>
+                <td class="params">{{ (checkerSamples[checker.key] || []).join(' / ') }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============================================================ 统计视图 -->
+  <div class="workspace" v-show="view === 'stats'" style="grid-template-columns: minmax(0, 1fr);">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>使用统计<span class="count">全部来自本机真实数据</span></h2>
+        <el-button size="small" text @click="loadStats">刷新</el-button>
+      </div>
+      <div class="stat-grid" v-if="stats">
+        <div class="stat-card"><div class="v">{{ stats.documents }}</div><div class="k">累计检查文档</div></div>
+        <div class="stat-card"><div class="v">{{ stats.checked_documents }}</div><div class="k">已出报告</div></div>
+        <div class="stat-card"><div class="v">{{ stats.avg_score === null ? '—' : stats.avg_score }}</div><div class="k">平均体检分</div></div>
+        <div class="stat-card"><div class="v" style="color: var(--danger);">{{ stats.total_errors }}</div><div class="k">累计发现错误</div></div>
+        <div class="stat-card"><div class="v" style="color: var(--warn);">{{ stats.total_warnings }}</div><div class="k">累计发现警告</div></div>
+        <div class="stat-card"><div class="v" style="color: var(--info);">{{ stats.total_infos }}</div><div class="k">累计提示</div></div>
+      </div>
+
+      <h2 style="font-size: 14px; font-weight: 500; margin: 6px 0 10px;">最常见的问题 TOP 5</h2>
+      <div v-if="!stats || !stats.top_issues.length" class="empty" style="padding: 22px;">
+        还没有统计数据，检查几份文档之后这里会出现排行。
+      </div>
+      <div v-else>
+        <div class="top-issue" v-for="item in stats.top_issues" :key="item.rule_id">
+          <div>
+            <div>{{ item.rule_name }} <span class="rid mono">{{ item.rule_id }}</span></div>
+            <div class="bar"><i :style="{ width: topIssueWidth(item) + '%' }"></i></div>
+          </div>
+          <div class="muted nowrap">{{ item.count }} 次</div>
+        </div>
+      </div>
+
+      <div class="notice" style="margin-top: 16px;">
+        <div class="title">数据说明</div>
+        <div>· 以上数字全部来自本机数据库统计，没有演示数据、没有假数字；</div>
+        <div>· 数据库位置：<span class="mono">{{ stats ? stats.db_path : '—' }}</span></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot">
+    格致 v{{ config.version || '1.0.0' }} · 只做格式检查，不判断学术内容质量 ·
+    <span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> 开始检查 ·
+    <span class="kbd">↑</span><span class="kbd">↓</span> 切换问题 ·
+    <span class="kbd">Esc</span> 回到清单
+  </footer>
+
+  <el-dialog v-model="showShortcuts" title="快捷键与使用提示" width="520px">
+    <div style="font-size: 13px; line-height: 2;">
+      <div><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> —— 对当前文档开始检查</div>
+      <div><span class="kbd">↑</span> / <span class="kbd">↓</span> —— 在问题清单中上下切换，并自动跳转原文</div>
+      <div><span class="kbd">Esc</span> —— 关闭弹窗 / 回到问题清单</div>
+      <div><span class="kbd">Ctrl</span> + <span class="kbd">S</span> —— 在规则库页保存 YAML 修改</div>
+      <div style="margin-top: 8px;" class="muted">
+        提示：不确定某项是否要改时，看报告里的「当前来源」——它会告诉你这个格式是段落直接设置的，
+        还是从样式继承来的。改样式比逐段改更省事，也更不容易出错。
+      </div>
+    </div>
+  </el-dialog>
+
+</div>
+
+<script src="/assets/vue.global.prod.js"></script>
+<script src="/assets/element-plus.full.min.js"></script>
+<script src="/assets/element-plus.zh-cn.min.js"></script>
+<script src="/assets/app.js"></script>
+</body>
+</html>

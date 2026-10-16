@@ -1,0 +1,47 @@
+# ===================================================================
+#  DocFmtChecker .gitignore
+#  原则：只提交「源码 + 规则 + 文档 + 样例」，一切可再生的产物都不进仓库。
+# ===================================================================
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.pytest-tmp/
+.venv/
+venv/
+
+# ---- 运行时数据（用户上传的文档、修复稿、sqlite 库、端口文件）----
+data/uploads/
+data/fixed/
+data/templates/
+data/*.db
+data/runtime_port.txt
+
+# ---- 自检 / 验证产物（每次跑都在变，体积大且可再生）----
+artifacts/
+.verify-data/
+.verify-server.log
+.verify-*
+*.log
+
+# ---- 无头 Chrome 临时 profile ----
+.tmp-chrome*/
+chrome-profile*/
+
+# ---- 便携版打包缓存（下载的 embeddable Python，11MB）----
+.build-cache/
+
+# ---- 打包产物不进仓库（体积大且可由源码重建）----
+*.rar
+*.zip
+*.7z
+
+# ---- OS / 编辑器 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.idea/
+.vscode/
